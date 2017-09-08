@@ -1,100 +1,51 @@
+import argparse
 import asyncio
-import json
 import os.path
-import time
-import uuid
 
-from tornado.platform.asyncio import to_asyncio_future
+
 from tornado.platform.asyncio import AsyncIOMainLoop
 from tornado.web import Application
-from tornado.web import RequestHandler
 from tornado.web import StaticFileHandler
 from tornado.httpserver import HTTPServer
-from tornado.websocket import WebSocketHandler
-
+from tornado.options import define
 
 from libs import setup
 
+from handlers import (
+    IndividualView,
+    TwilioView,
+    WebSocketHandler
+)
+from handlers.websocket.view import infinite_update_loop
+
 
 # CONSTANTS
-UPDATE_PERIOD = 10
-
+parser = argparse.ArgumentParser(description='commodus')
+parser.add_argument('dbuser', help='database username string')
+parser.add_argument('dbpass', help='database password string')
+parser.add_argument('dbhost', help='database host string (ex: 120.0.0.1)')
+parser.add_argument('dbname', help='database name string')
+parser.add_argument('--dbport', help='database port integer (ex: 5432)', type=int, default=5432)
+parser.add_argument('--port', help='API server port integer (ex: 8080)', type=int, default=8080)
+config = parser.parse_args()
+define('username', default=config.dbuser, type=str, group='db')
+define('password', default=config.dbpass, type=str, group='db')
+define('host', default=config.dbhost, type=str, group='db')
+define('name', default=config.dbname, type=str, group='db')
+define('port', default=config.dbport, type=int, group='db')
 
 logger = setup.log(name='commodus', version='v1')
 
 
-connections = []
-
-
-class FaviconHandler(RequestHandler):
-    def get(self):
-        self.redirect('/static/favicon.ico')
-
-
-class WebHandler(RequestHandler):
-    def get(self):
-        self.render("/static/index.html")
-
-
-class WSHandler(WebSocketHandler):
-    def open(self):
-        logger.debug('new connection')
-        connections.append(self)
-        self.write_message(
-            {
-                "message": str(uuid.uuid4())
-            }
-        )
-
-    def on_message(self, message):
-        """
-        expects a message of this format
-        {
-            'command': <name of command>,
-            'kwargs': <inputs for the command>
-        }
-        :param message:
-        :return:
-        """
-        logger.debug(f'message received: "{message}"')
-        msg = json.loads(message)
-        logger.debug(f'message parsed: "{msg}"')
-
-    def on_close(self):
-        logger.debug('connection closed')
-        connections.remove(self)
-
-
-async def update():
-
-    while True:
-        await asyncio.sleep(UPDATE_PERIOD)  # switch to other code and continue execution in 5 seconds
-
-        msg = {
-            'messages': [
-                {'id': str(uuid.uuid4()), 'ts': int(time.time()), 'body': 'hello'},
-                {'id': str(uuid.uuid4()), 'ts': int(time.time()), 'body': 'yes, what?'}
-            ]
-        }
-        if update:
-            logger.debug(f"sending update, next update in {UPDATE_PERIOD}")
-            for connection in connections:
-                await to_asyncio_future(
-                    connection.write_message(msg)
-                )# send message to each connected client
-        else:
-            logger.debug(f"next update in {UPDATE_PERIOD}")
-
-
 def main():
-    #asyncio.ensure_future(echo_forever())  # fire and forget
     AsyncIOMainLoop().install()
     server = HTTPServer(
         Application(
             [
-                (r'/favicon.ico', FaviconHandler),
+                (r'/v1/twilio/', TwilioView),
+                (r"/v1/individual/([0-9A-F]{32})", IndividualView),
                 (r'/static/(.*)', StaticFileHandler, {'path': 'static'}),
-                (r'/ws', WSHandler),
+                (r'/ws', WebSocketHandler),
                 (r'/(.*)', StaticFileHandler, {'path': 'static', 'default_filename': 'index.html'}),
             ],
             # default_handler_class=NotFoundView,
@@ -104,7 +55,7 @@ def main():
     server.bind(8080)
     server.start()  # Forks multiple sub-processes
     logger.info("installing background services")
-    asyncio.ensure_future(update())
+    asyncio.ensure_future(infinite_update_loop())
     logger.info("server is waiting for a connection")
     asyncio.get_event_loop().run_forever().start()
 

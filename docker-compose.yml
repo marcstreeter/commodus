@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  api:
+    build: ./web
+    depends_on:
+      - db
+    environment:
+      - DATABASE_USER=postgres
+      - DATABASE_PASS=postgres
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=postgres
+    ports:
+      - 8888:8080
+
+  db:
+    build: ./db
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+    ports:
+      - 5432:5432
