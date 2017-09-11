@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 from libs.db import Query
 from libs.individual import (
@@ -10,6 +9,7 @@ from libs.individual import (
 from libs.errors import InvalidRequest
 
 logger = logging.getLogger(__name__)
+
 
 class Individual:
     def __init__(self, individual_id, surname, telephone, origin_id, origin):
@@ -53,3 +53,45 @@ async def create(session, surname, telephone, origin_id):
             individual_id=individual_id,
             surname=surname
         ).serialize()
+
+async def read(session, individual_id=None, telephone=None, surname=None, origin=None, origin_id=None):
+    params = {}
+
+    if individual_id:
+        params['individual_id'] = individual_id
+
+    if telephone:
+        params['telephone'] = telephone
+
+    if surname:
+        params['surname'] = surname
+
+    if origin:
+        params['origin'] = origin
+
+    if origin_id:
+        params['origin_id'] = origin_id
+
+    clauses = ' AND '.join(
+        f"{key} = %({key})s" for key in params.keys()
+    )
+
+    sql = (
+        "SELECT individual_id, origin_id, surname, telephone, origin, created, last_activity "
+        "FROM individual "
+        f"WHERE {clauses}"
+    )
+
+    async with Query(session=session, sql=sql, params=params) as results:
+        formatted_results = [
+            Individual(
+                individual_id=row['individual_id'],
+                surname=row['surname'],
+                telephone=row['telephone'],
+                origin=row['origin'],
+                origin_id=row['origin_id']
+            ).serialize()
+            for row in results
+        ]
+
+    return formatted_results

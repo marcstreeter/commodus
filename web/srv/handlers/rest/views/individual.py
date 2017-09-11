@@ -12,6 +12,7 @@ from voluptuous import (
 
 from ..models import individual as model
 from . import BaseView
+from libs import errors
 
 # schemas
 individual_create_schema = Schema(
@@ -47,7 +48,7 @@ class IndividualView(BaseView):
             )
 
         try:
-           output = await model.create(
+            output = await model.create(
                 session=self.session,
                 origin_id=kwargs['individual_id'],
                 surname=kwargs['surname'],
@@ -67,49 +68,25 @@ class IndividualView(BaseView):
         except Exception as e:
             raise HTTPError(500, f"failed to send create output({e})")
 
-    async def get(self, individual_id):
+    async def get(self, individual_id=None):
         """
-        retrieve guid details
-
-        **Example request**:
-        GET /guid/1A9FA24E14F14CD2B4A708A62D4C7F88 HTTP/1.1
-        Host: 127.0.0.1:8888
-        Connection: close
-        User-Agent: Paw/3.1.3 (Macintosh; OS X/10.12.6) GCDHTTPRequest
-
-        **Example response**:
-        HTTP/1.1 200 OK
-        Server: TornadoServer/4.5.1
-        Content-Type: application/json; charset=UTF-8
-        Date: Thu, 24 Aug 2017 21:27:32 GMT
-        Etag: "60206aa5d167884d548afa7c73fb208f428e43df"
-        Content-Length: 93
-
-        {"guid": "1A9FA24E14F14CD2B4A708A62D4C7F88", "expire": "1427736345", "user": "Cylance, Inc."}
-
+        retrieve individual details
         """
         logger.debug("entered get")
-        # execute
-        try:
-            result = await model.read(session=self.session, guid=guid)
-        except errors.CylanceErrors:
+
+        try:  # execute
+            output = await model.read(
+                session=self.session,
+                individual_id=individual_id
+            )
+        except errors.CommodusErrors:
             raise
         except Exception as e:
             raise HTTPError(500, f"failed to read model({e})")
         else:
             logger.debug("read model")
 
-        # prepare output
-        try:
-            ordered_keys = ('guid', 'expire', 'user')
-            output = self.prepare_output(output=result, ordered_keys=ordered_keys)
-        except Exception as e:
-            raise HTTPError(500, f"failed to prepare read ouput({e})")
-        else:
-            logger.debug("read output prepared")
-
-        # send output
-        try:
+        try:  # send output
             self.write(output)
             self.finish()
         except Exception as e:
